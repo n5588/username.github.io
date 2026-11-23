@@ -1,0 +1,6 @@
+{
+  "appId": "com.cadviewer.mobile",
+  "appName": "CAD看圖測量",
+  "webDir": "www",
+  "bundledWebRuntime": false
+}
