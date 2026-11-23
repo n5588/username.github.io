@@ -1,0 +1,1209 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="CAD 看圖測量" />
+  <meta name="theme-color" content="#101417" />
+  <link rel="manifest" href="manifest.json" />
+  <link rel="apple-touch-icon" href="icon-192.png" />
+  <title>CAD 看圖與測量工具 (DXF / DWG)</title>
+  <style>
+    :root {
+      --bg-canvas: #13171a;
+      --bg-bar: #101417;
+      --bg-panel: #181e22;
+      --bg-btn: #1f262b;
+      --bg-btn-hover: #293239;
+      --accent: #3cd3ad;
+      --accent-dark: #259c7e;
+      --accent-text: #0b1f1a;
+      --warn-bg: rgba(70, 52, 23, 0.88);
+      --warn-border: #8b682e;
+      --warn-text: #e6c68a;
+      --text-main: #e2e8ec;
+      --text-muted: #8a969e;
+      --border: #2a3339;
+      --safe-top: env(safe-area-inset-top, 0px);
+      --safe-bottom: env(safe-area-inset-bottom, 0px);
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      -webkit-tap-highlight-color: transparent;
+      user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-canvas);
+      color: var(--text-main);
+      font-family: -apple-system, BlinkMacSystemFont, "PingFang TC", "Microsoft JhengHei", "Segoe UI", Roboto, sans-serif;
+    }
+
+    /* 頂部工具列 */
+    .top-bar {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      padding-top: calc(10px + var(--safe-top));
+      padding-bottom: 10px;
+      padding-left: 12px;
+      padding-right: 12px;
+      background: var(--bg-bar);
+      border-bottom: 1px solid var(--border);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      z-index: 30;
+    }
+
+    .btn-dark {
+      background: var(--bg-btn);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      border-radius: 10px;
+      padding: 9px 14px;
+      font-size: 14px;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .btn-dark:active {
+      background: var(--bg-btn-hover);
+    }
+
+    .btn-primary {
+      background: var(--accent);
+      color: var(--accent-text);
+      border: none;
+      border-radius: 10px;
+      padding: 9px 16px;
+      font-size: 14px;
+      font-weight: 700;
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      cursor: pointer;
+      box-shadow: 0 2px 10px rgba(60, 211, 173, 0.25);
+    }
+    .btn-primary:active {
+      background: var(--accent-dark);
+    }
+
+    /* 警告提示橫幅 */
+    .banner {
+      position: fixed;
+      top: calc(58px + var(--safe-top));
+      left: 12px;
+      right: 12px;
+      background: var(--warn-bg);
+      border: 1px solid var(--warn-border);
+      color: var(--warn-text);
+      border-radius: 10px;
+      padding: 10px 12px;
+      font-size: 12.5px;
+      line-height: 1.5;
+      z-index: 25;
+      backdrop-filter: blur(6px);
+      display: flex;
+      justify-content: space-between;
+      align-items: flex-start;
+      gap: 8px;
+    }
+    .banner.hidden {
+      display: none;
+    }
+    .banner-close {
+      background: none;
+      border: none;
+      color: var(--warn-text);
+      font-size: 16px;
+      line-height: 1;
+      cursor: pointer;
+      padding: 2px 4px;
+      opacity: 0.8;
+    }
+
+    /* 主畫布 */
+    #cadCanvas {
+      display: block;
+      width: 100vw;
+      height: 100vh;
+      touch-action: none;
+      cursor: grab;
+    }
+    #cadCanvas:active {
+      cursor: grabbing;
+    }
+
+    /* 測量浮動面板 */
+    .measure-hud {
+      position: fixed;
+      bottom: calc(76px + var(--safe-bottom));
+      left: 12px;
+      right: 12px;
+      background: rgba(24, 30, 34, 0.94);
+      border: 1px solid var(--accent);
+      border-radius: 12px;
+      padding: 12px 14px;
+      z-index: 25;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      backdrop-filter: blur(8px);
+      box-shadow: 0 6px 20px rgba(0,0,0,0.45);
+    }
+    .measure-hud.active {
+      display: flex;
+    }
+    .hud-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 13px;
+      color: var(--accent);
+      font-weight: 600;
+    }
+    .hud-value {
+      font-size: 18px;
+      font-weight: 700;
+      color: #ffffff;
+      font-variant-numeric: tabular-nums;
+    }
+    .hud-sub {
+      font-size: 12px;
+      color: var(--text-muted);
+    }
+    .hud-actions {
+      display: flex;
+      gap: 8px;
+      margin-top: 2px;
+    }
+    .hud-btn {
+      background: var(--bg-btn);
+      color: var(--text-main);
+      border: 1px solid var(--border);
+      border-radius: 7px;
+      padding: 5px 10px;
+      font-size: 12px;
+      cursor: pointer;
+    }
+
+    /* 底部 6 鍵功能列 */
+    .bottom-bar {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      padding-top: 6px;
+      padding-bottom: calc(8px + var(--safe-bottom));
+      padding-left: 6px;
+      padding-right: 6px;
+      background: var(--bg-bar);
+      border-top: 1px solid var(--border);
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+      z-index: 30;
+    }
+
+    .nav-item {
+      background: transparent;
+      border: 1px solid transparent;
+      border-radius: 10px;
+      padding: 6px 2px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 4px;
+      color: var(--text-muted);
+      font-size: 11px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .nav-item svg {
+      width: 20px;
+      height: 20px;
+      stroke: currentColor;
+      fill: none;
+      stroke-width: 1.8;
+    }
+    .nav-item.active {
+      background: rgba(60, 211, 173, 0.14);
+      border-color: var(--accent);
+      color: var(--accent);
+      font-weight: 600;
+    }
+
+    /* 圖層抽屜 / 彈窗 */
+    .modal-backdrop {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.6);
+      z-index: 40;
+      display: none;
+      align-items: flex-end;
+    }
+    .modal-backdrop.open {
+      display: flex;
+    }
+    .drawer {
+      width: 100%;
+      max-height: 72vh;
+      background: var(--bg-panel);
+      border-top: 1px solid var(--border);
+      border-radius: 18px 18px 0 0;
+      padding: 16px 16px calc(20px + var(--safe-bottom));
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      overflow-y: auto;
+    }
+    .drawer-title {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 16px;
+      font-weight: 700;
+      padding-bottom: 8px;
+      border-bottom: 1px solid var(--border);
+    }
+    .layer-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 12px;
+      background: var(--bg-btn);
+      border-radius: 10px;
+    }
+    .layer-info {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      font-size: 14px;
+    }
+    .color-dot {
+      width: 14px;
+      height: 14px;
+      border-radius: 50%;
+      display: inline-block;
+    }
+    .switch {
+      position: relative;
+      width: 44px;
+      height: 24px;
+    }
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      inset: 0;
+      background-color: #364149;
+      border-radius: 24px;
+      transition: .2s;
+    }
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      border-radius: 50%;
+      transition: .2s;
+    }
+    input:checked + .slider {
+      background-color: var(--accent);
+    }
+    input:checked + .slider:before {
+      transform: translateX(20px);
+    }
+
+    /* 安裝教學提示框 */
+    .install-guide {
+      background: #132226;
+      border: 1px solid var(--accent-dark);
+      border-radius: 10px;
+      padding: 12px;
+      font-size: 13px;
+      line-height: 1.6;
+      color: #d6e9e4;
+    }
+    .install-guide strong {
+      color: var(--accent);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- 頂部工具列 -->
+  <header class="top-bar">
+    <button class="btn-dark" id="btnLayers">
+      <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
+        <polyline points="2 17 12 22 22 17"></polyline>
+        <polyline points="2 12 12 17 22 12"></polyline>
+      </svg>
+      圖層
+    </button>
+
+    <div style="display:flex; gap:8px; align-items:center;">
+      <label class="btn-primary" for="fileInput">
+        <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+          <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+          <polyline points="17 8 12 3 7 8"></polyline>
+          <line x1="12" y1="3" x2="12" y2="15"></line>
+        </svg>
+        開啟 DXF / DWG
+      </label>
+      <input type="file" id="fileInput" accept=".dxf,.dwg,.txt" style="display:none;" />
+
+      <button class="btn-dark" id="btnTopMore">更多</button>
+    </div>
+  </header>
+
+  <!-- 提示橫幅 -->
+  <div class="banner" id="statusBanner">
+    <span id="bannerText">
+      大型 DWG | 在裝置分批繪製，僅供瀏覽。有 330 筆物件不支援或以近似方式處理；目前只顯示模型空間，不含圖紙配置；部分填充圖案以近似方式呈現
+    </span>
+    <button class="banner-close" id="btnCloseBanner" title="關閉提示">✕</button>
+  </div>
+
+  <!-- CAD 畫布 -->
+  <canvas id="cadCanvas"></canvas>
+
+  <!-- 測量 / 選取浮動面板 -->
+  <div class="measure-hud" id="measureHud">
+    <div class="hud-header">
+      <span id="hudTitle">測距模式 (自動鎖點)</span>
+      <button class="hud-btn" id="btnClearMeasure">清除重測</button>
+    </div>
+    <div class="hud-value" id="hudMainVal">請點擊畫布上第一點</div>
+    <div class="hud-sub" id="hudSubVal">支援端點與交點自動吸附</div>
+    <div class="hud-actions" id="hudUnitRow">
+      <button class="hud-btn" data-unit="mm">單位: mm</button>
+      <button class="hud-btn" data-unit="cm">單位: cm</button>
+      <button class="hud-btn" data-unit="m">單位: m</button>
+    </div>
+  </div>
+
+  <!-- 底部功能列 -->
+  <nav class="bottom-bar">
+    <button class="nav-item active" data-tool="pan">
+      <svg viewBox="0 0 24 24"><path d="M18 11V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v0"/><path d="M14 10V4a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v2"/><path d="M10 10.5V6a2 2 0 0 0-2-2v0a2 2 0 0 0-2 2v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg>
+      <span>平移</span>
+    </button>
+    <button class="nav-item" data-tool="select">
+      <svg viewBox="0 0 24 24"><path d="M3 3l7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/><path d="M13 13l6 6"/></svg>
+      <span>選取</span>
+    </button>
+    <button class="nav-item" data-tool="dist">
+      <svg viewBox="0 0 24 24"><path d="M21.3 15.3a2.4 2.4 0 0 1 0 3.4l-2.6 2.6a2.4 2.4 0 0 1-3.4 0L2.7 8.7a2.41 2.41 0 0 1 0-3.4l2.6-2.6a2.41 2.41 0 0 1 3.4 0Z"/><path d="m14.5 12.5 2-2"/><path d="m11.5 9.5 2-2"/><path d="m8.5 6.5 2-2"/><path d="m17.5 15.5 2-2"/></svg>
+      <span>測距</span>
+    </button>
+    <button class="nav-item" data-tool="area">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2" stroke-dasharray="4 2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg>
+      <span>測坪數</span>
+    </button>
+    <button class="nav-item" data-tool="fit">
+      <svg viewBox="0 0 24 24"><polyline points="15 3 21 3 21 9"/><polyline points="9 21 3 21 3 15"/><line x1="21" y1="3" x2="14" y2="10"/><line x1="3" y1="21" x2="10" y2="14"/></svg>
+      <span>全圖</span>
+    </button>
+    <button class="nav-item" data-tool="more">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+      <span>更多</span>
+    </button>
+  </nav>
+
+  <!-- 圖層與設定抽屜 -->
+  <div class="modal-backdrop" id="modalBackdrop">
+    <div class="drawer" id="drawerContent"></div>
+  </div>
+
+  <script>
+    // 註冊 Service Worker 以支援離線與手機安裝 (PWA)
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', () => {
+        navigator.serviceWorker.register('./sw.js').catch(() => {});
+      });
+    }
+
+    const canvas = document.getElementById('cadCanvas');
+    const ctx = canvas.getContext('2d');
+
+    // 狀態管理
+    let width = window.innerWidth;
+    let height = window.innerHeight;
+    let dpr = window.devicePixelRatio || 1;
+
+    let camera = { x: 0, y: 0, zoom: 1 };
+    let currentTool = 'pan';
+    let unit = 'mm'; // mm, cm, m (假設圖面 1 單位 = 1 mm)
+    let showGrid = true;
+    let snapEnabled = true;
+
+    let entities = [];
+    let layers = {};
+    let selectedEntity = null;
+    let measurePoints = [];
+    let snapPoint = null;
+    let pointerPos = { x: 0, y: 0 };
+
+    // AutoCAD 標準色號對應
+    const ACI_COLORS = {
+      1: '#ff4d4d', // 紅
+      2: '#ffdf4d', // 黃
+      3: '#4dff88', // 綠
+      4: '#4dffff', // 青
+      5: '#4d94ff', // 藍
+      6: '#ff66ff', // 洋紅
+      7: '#e8eef2', // 白
+      8: '#808a90', // 灰
+      9: '#b0bac0'
+    };
+
+    function getColor(aci) {
+      return ACI_COLORS[aci] || '#4dffff';
+    }
+
+    // 初始化畫布大小
+    function resizeCanvas() {
+      width = window.innerWidth;
+      height = window.innerHeight;
+      dpr = window.devicePixelRatio || 1;
+      canvas.width = width * dpr;
+      canvas.height = height * dpr;
+      ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      render();
+    }
+    window.addEventListener('resize', resizeCanvas);
+
+    // 建立擬真多棟建築平面圖預設資料 (還原截圖視覺)
+    function loadSampleDrawing() {
+      entities = [];
+      layers = {
+        'A-WALL (建築牆體)': { color: '#4dffff', visible: true },
+        'A-FURN (家具隔間)': { color: '#4dff88', visible: true },
+        'M-DUCT (風管管線)': { color: '#4d94ff', visible: true },
+        'E-POWR (機電配置)': { color: '#ff4d4d', visible: true },
+        'A-ANNO (重點框選)': { color: '#ffdf4d', visible: true }
+      };
+
+      function addRect(x, y, w, h, layer, color, lw = 1) {
+        const pts = [
+          { x: x, y: y },
+          { x: x + w, y: y },
+          { x: x + w, y: y + h },
+          { x: x, y: y + h },
+          { x: x, y: y }
+        ];
+        for (let i = 0; i < 4; i++) {
+          entities.push({
+            type: 'LINE',
+            x1: pts[i].x, y1: pts[i].y,
+            x2: pts[i + 1].x, y2: pts[i + 1].y,
+            layer, color, lineWidth: lw
+          });
+        }
+      }
+
+      function addFloorPlanBlock(ox, oy, bw, bh, primaryColor, secondaryColor, seed) {
+        addRect(ox, oy, bw, bh, 'A-WALL (建築牆體)', '#d8e2e8', 1.4);
+        addRect(ox + 120, oy + 120, bw - 240, bh - 240, 'A-WALL (建築牆體)', primaryColor, 1.1);
+
+        const cols = 4;
+        const rows = 3;
+        const cellW = (bw - 240) / cols;
+        const cellH = (bh - 240) / rows;
+
+        for (let r = 0; r < rows; r++) {
+          for (let c = 0; c < cols; c++) {
+            const rx = ox + 120 + c * cellW;
+            const ry = oy + 120 + r * cellH;
+            if ((r + c + seed) % 2 === 0) {
+              addRect(rx + 60, ry + 60, cellW - 120, cellH - 120, 'A-FURN (家具隔間)', secondaryColor, 1);
+              entities.push({
+                type: 'LINE',
+                x1: rx + 60, y1: ry + 60,
+                x2: rx + cellW - 60, y2: ry + cellH - 60,
+                layer: 'M-DUCT (風管管線)', color: '#4d94ff', lineWidth: 0.8
+              });
+            } else {
+              entities.push({
+                type: 'CIRCLE',
+                cx: rx + cellW / 2,
+                cy: ry + cellH / 2,
+                r: Math.min(cellW, cellH) * 0.28,
+                layer: 'E-POWR (機電配置)',
+                color: '#ff66ff',
+                lineWidth: 1
+              });
+            }
+          }
+        }
+      }
+
+      // 中央主建築區塊 (含黃色雙層高亮框)
+      addFloorPlanBlock(-3200, -1200, 4600, 3200, '#4dffff', '#4dff88', 1);
+      addRect(-3750, -1750, 5700, 4300, 'A-ANNO (重點框選)', '#ffdf4d', 2);
+      addRect(-3550, -1550, 5300, 3900, 'A-ANNO (重點框選)', '#d4b43a', 1.3);
+
+      // 左側區塊
+      addFloorPlanBlock(-7600, -1100, 3100, 2900, '#4dff88', '#4dffff', 2);
+
+      // 下方紅色系區塊
+      addFloorPlanBlock(-2900, 3100, 4200, 3100, '#ff4d4d', '#ffdf4d', 3);
+
+      // 中右上方區塊
+      addFloorPlanBlock(2500, -2500, 3500, 2400, '#4dff88', '#ffdf4d', 4);
+
+      // 中右下方區塊
+      addFloorPlanBlock(2500, 400, 3500, 2300, '#ff66ff', '#4dffff', 5);
+
+      // 右下方較大區塊
+      addFloorPlanBlock(3600, 3200, 4400, 4600, '#4d94ff', '#d8e2e8', 6);
+
+      // 右上角獨立區塊
+      addFloorPlanBlock(11500, -5800, 3600, 3300, '#4dffff', '#4dff88', 7);
+
+      fitToScreen();
+    }
+
+    // 座標轉換
+    function worldToScreen(wx, wy) {
+      return {
+        x: wx * camera.zoom + camera.x,
+        y: wy * camera.zoom + camera.y
+      };
+    }
+
+    function screenToWorld(sx, sy) {
+      return {
+        x: (sx - camera.x) / camera.zoom,
+        y: (sy - camera.y) / camera.zoom
+      };
+    }
+
+    // 全圖縮放
+    function fitToScreen() {
+      let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+      let hasVisible = false;
+
+      for (const e of entities) {
+        if (layers[e.layer] && !layers[e.layer].visible) continue;
+        hasVisible = true;
+        if (e.type === 'LINE') {
+          minX = Math.min(minX, e.x1, e.x2);
+          minY = Math.min(minY, e.y1, e.y2);
+          maxX = Math.max(maxX, e.x1, e.x2);
+          maxY = Math.max(maxY, e.y1, e.y2);
+        } else if (e.type === 'CIRCLE' || e.type === 'ARC') {
+          minX = Math.min(minX, e.cx - e.r);
+          minY = Math.min(minY, e.cy - e.r);
+          maxX = Math.max(maxX, e.cx + e.r);
+          maxY = Math.max(maxY, e.cy + e.r);
+        }
+      }
+
+      if (!hasVisible) {
+        camera = { x: width / 2, y: height / 2, zoom: 1 };
+        render();
+        return;
+      }
+
+      const bw = maxX - minX || 100;
+      const bh = maxY - minY || 100;
+      const padX = width * 0.12;
+      const padY = height * 0.22;
+      const zoom = Math.min((width - padX * 2) / bw, (height - padY * 2) / bh);
+
+      camera.zoom = zoom;
+      camera.x = width / 2 - ((minX + maxX) / 2) * zoom;
+      camera.y = height / 2 - ((minY + maxY) / 2) * zoom + 20;
+      render();
+    }
+
+    // 繪製背景網格
+    function drawGrid() {
+      if (!showGrid) return;
+      const baseStep = 1000;
+      let step = baseStep * camera.zoom;
+      while (step < 32) step *= 5;
+      while (step > 160) step /= 5;
+
+      const offsetX = camera.x % step;
+      const offsetY = camera.y % step;
+
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.045)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let x = offsetX; x < width; x += step) {
+        ctx.moveTo(x, 0);
+        ctx.lineTo(x, height);
+      }
+      for (let y = offsetY; y < height; y += step) {
+        ctx.moveTo(0, y);
+        ctx.lineTo(width, y);
+      }
+      ctx.stroke();
+    }
+
+    // 主渲染迴圈
+    function render() {
+      ctx.fillStyle = '#13171a';
+      ctx.fillRect(0, 0, width, height);
+
+      drawGrid();
+
+      ctx.save();
+      ctx.translate(camera.x, camera.y);
+      ctx.scale(camera.zoom, camera.zoom);
+
+      for (const e of entities) {
+        if (layers[e.layer] && !layers[e.layer].visible) continue;
+        const isSel = (e === selectedEntity);
+        ctx.strokeStyle = isSel ? '#ffffff' : (e.color || '#4dffff');
+        ctx.lineWidth = ((isSel ? 3 : (e.lineWidth || 1.2)) / camera.zoom);
+
+        if (e.type === 'LINE') {
+          ctx.beginPath();
+          ctx.moveTo(e.x1, e.y1);
+          ctx.lineTo(e.x2, e.y2);
+          ctx.stroke();
+        } else if (e.type === 'CIRCLE') {
+          ctx.beginPath();
+          ctx.arc(e.cx, e.cy, e.r, 0, Math.PI * 2);
+          ctx.stroke();
+        } else if (e.type === 'ARC') {
+          ctx.beginPath();
+          ctx.arc(e.cx, e.cy, e.r, e.startAngle, e.endAngle);
+          ctx.stroke();
+        } else if (e.type === 'TEXT') {
+          ctx.fillStyle = e.color || '#e2e8ec';
+          const fontSize = Math.max(10 / camera.zoom, e.height || 100);
+          ctx.font = `${fontSize}px sans-serif`;
+          ctx.fillText(e.text, e.x, e.y);
+        }
+      }
+
+      // 繪製測量線與多邊形
+      if (measurePoints.length > 0) {
+        ctx.strokeStyle = '#3cd3ad';
+        ctx.fillStyle = 'rgba(60, 211, 173, 0.18)';
+        ctx.lineWidth = 2.2 / camera.zoom;
+
+        ctx.beginPath();
+        ctx.moveTo(measurePoints[0].x, measurePoints[0].y);
+        for (let i = 1; i < measurePoints.length; i++) {
+          ctx.lineTo(measurePoints[i].x, measurePoints[i].y);
+        }
+        if (currentTool === 'area' && measurePoints.length >= 3) {
+          ctx.closePath();
+          ctx.fill();
+        }
+        ctx.stroke();
+
+        for (const pt of measurePoints) {
+          ctx.fillStyle = '#ffdf4d';
+          ctx.beginPath();
+          ctx.arc(pt.x, pt.y, 4.5 / camera.zoom, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // 繪製鎖點標記 (OSNAP 綠色方框)
+      if (snapPoint && (currentTool === 'dist' || currentTool === 'area')) {
+        const sSize = 7 / camera.zoom;
+        ctx.strokeStyle = '#4dff88';
+        ctx.lineWidth = 2 / camera.zoom;
+        ctx.strokeRect(snapPoint.x - sSize, snapPoint.y - sSize, sSize * 2, sSize * 2);
+      }
+
+      ctx.restore();
+    }
+
+    // 尋找最近鎖點
+    function findSnapPoint(sx, sy) {
+      if (!snapEnabled) return screenToWorld(sx, sy);
+      const threshold = 18; // 螢幕像素距離
+      let bestDist = threshold;
+      let bestPt = null;
+
+      for (const e of entities) {
+        if (layers[e.layer] && !layers[e.layer].visible) continue;
+        const candidates = [];
+        if (e.type === 'LINE') {
+          candidates.push({ x: e.x1, y: e.y1 }, { x: e.x2, y: e.y2 });
+          candidates.push({ x: (e.x1 + e.x2) / 2, y: (e.y1 + e.y2) / 2 });
+        } else if (e.type === 'CIRCLE' || e.type === 'ARC') {
+          candidates.push({ x: e.cx, y: e.cy });
+        }
+
+        for (const c of candidates) {
+          const sp = worldToScreen(c.x, c.y);
+          const d = Math.hypot(sp.x - sx, sp.y - sy);
+          if (d < bestDist) {
+            bestDist = d;
+            bestPt = c;
+          }
+        }
+      }
+      return bestPt;
+    }
+
+    // 單位換算與測量更新
+    function formatLength(mmVal) {
+      if (unit === 'mm') return `${mmVal.toFixed(1)} mm`;
+      if (unit === 'cm') return `${(mmVal / 10).toFixed(2)} cm`;
+      return `${(mmVal / 1000).toFixed(3)} m`;
+    }
+
+    function updateMeasureHUD() {
+      const hud = document.getElementById('measureHud');
+      const title = document.getElementById('hudTitle');
+      const mainVal = document.getElementById('hudMainVal');
+      const subVal = document.getElementById('hudSubVal');
+      const unitRow = document.getElementById('hudUnitRow');
+
+      if (currentTool === 'dist') {
+        hud.classList.add('active');
+        unitRow.style.display = 'flex';
+        title.textContent = '測距模式 (自動鎖點)';
+        if (measurePoints.length === 0) {
+          mainVal.textContent = '請點擊起點';
+          subVal.textContent = '靠近端點或中點會自動出現綠色鎖點框';
+        } else if (measurePoints.length === 1) {
+          mainVal.textContent = '請點擊終點';
+          subVal.textContent = `起點: (${measurePoints[0].x.toFixed(0)}, ${measurePoints[0].y.toFixed(0)})`;
+        } else {
+          let total = 0;
+          for (let i = 1; i < measurePoints.length; i++) {
+            total += Math.hypot(measurePoints[i].x - measurePoints[i-1].x, measurePoints[i].y - measurePoints[i-1].y);
+          }
+          const lastDx = Math.abs(measurePoints[measurePoints.length-1].x - measurePoints[measurePoints.length-2].x);
+          const lastDy = Math.abs(measurePoints[measurePoints.length-1].y - measurePoints[measurePoints.length-2].y);
+          mainVal.textContent = `總長: ${formatLength(total)}`;
+          subVal.textContent = `ΔX: ${formatLength(lastDx)}  |  ΔY: ${formatLength(lastDy)} (可繼續點擊累加)`;
+        }
+      } else if (currentTool === 'area') {
+        hud.classList.add('active');
+        unitRow.style.display = 'none';
+        title.textContent = '測坪數模式 (依序點擊圍閉多邊形)';
+        if (measurePoints.length < 3) {
+          mainVal.textContent = `已選 ${measurePoints.length} 點 (至少需 3 點)`;
+          subVal.textContent = '依序點擊空間角落即可自動計算平方公尺與坪數';
+        } else {
+          // 鞋帶公式計算面積 (mm^2)
+          let areaMM2 = 0;
+          for (let i = 0; i < measurePoints.length; i++) {
+            const j = (i + 1) % measurePoints.length;
+            areaMM2 += measurePoints[i].x * measurePoints[j].y;
+            areaMM2 -= measurePoints[j].x * measurePoints[i].y;
+          }
+          areaMM2 = Math.abs(areaMM2) / 2;
+          const areaM2 = areaMM2 / 1_000_000;
+          const ping = areaM2 * 0.3025;
+          mainVal.textContent = `${ping.toFixed(2)} 坪  (${areaM2.toFixed(2)} m²)`;
+          subVal.textContent = `頂點數: ${measurePoints.length} 點 | 換算基準: 1 m² = 0.3025 坪`;
+        }
+      } else if (currentTool === 'select' && selectedEntity) {
+        hud.classList.add('active');
+        unitRow.style.display = 'none';
+        title.textContent = '物件屬性資訊';
+        if (selectedEntity.type === 'LINE') {
+          const len = Math.hypot(selectedEntity.x2 - selectedEntity.x1, selectedEntity.y2 - selectedEntity.y1);
+          mainVal.textContent = `線段 (LINE) · 長度 ${formatLength(len)}`;
+          subVal.textContent = `圖層: ${selectedEntity.layer}`;
+        } else if (selectedEntity.type === 'CIRCLE') {
+          mainVal.textContent = `圓形 (CIRCLE) · 半徑 ${formatLength(selectedEntity.r)}`;
+          subVal.textContent = `圖層: ${selectedEntity.layer}`;
+        }
+      } else {
+        hud.classList.remove('active');
+      }
+    }
+
+    // 選取物件檢測
+    function hitTestEntity(sx, sy) {
+      const wp = screenToWorld(sx, sy);
+      const tol = 12 / camera.zoom;
+      for (let i = entities.length - 1; i >= 0; i--) {
+        const e = entities[i];
+        if (layers[e.layer] && !layers[e.layer].visible) continue;
+        if (e.type === 'LINE') {
+          const d = distToSegment(wp, { x: e.x1, y: e.y1 }, { x: e.x2, y: e.y2 });
+          if (d <= tol) return e;
+        } else if (e.type === 'CIRCLE') {
+          const d = Math.abs(Math.hypot(wp.x - e.cx, wp.y - e.cy) - e.r);
+          if (d <= tol) return e;
+        }
+      }
+      return null;
+    }
+
+    function distToSegment(p, v, w) {
+      const l2 = (w.x - v.x) ** 2 + (w.y - v.y) ** 2;
+      if (l2 === 0) return Math.hypot(p.x - v.x, p.y - v.y);
+      let t = ((p.x - v.x) * (w.x - v.x) + (p.y - v.y) * (w.y - v.y)) / l2;
+      t = Math.max(0, Math.min(1, t));
+      return Math.hypot(p.x - (v.x + t * (w.x - v.x)), p.y - (v.y + t * (w.y - v.y)));
+    }
+
+    // 觸控與滑鼠互動 (支援單指平移/點擊、雙指縮放)
+    let isDragging = false;
+    let dragMoved = false;
+    let lastTouch = { x: 0, y: 0 };
+    let pinchDist = 0;
+
+    canvas.addEventListener('pointerdown', (e) => {
+      isDragging = true;
+      dragMoved = false;
+      lastTouch = { x: e.clientX, y: e.clientY };
+    });
+
+    canvas.addEventListener('pointermove', (e) => {
+      pointerPos = { x: e.clientX, y: e.clientY };
+      if (currentTool === 'dist' || currentTool === 'area') {
+        snapPoint = findSnapPoint(e.clientX, e.clientY);
+      } else {
+        snapPoint = null;
+      }
+
+      if (isDragging) {
+        const dx = e.clientX - lastTouch.x;
+        const dy = e.clientY - lastTouch.y;
+        if (Math.hypot(dx, dy) > 4) dragMoved = true;
+        camera.x += dx;
+        camera.y += dy;
+        lastTouch = { x: e.clientX, y: e.clientY };
+      }
+      render();
+    });
+
+    canvas.addEventListener('pointerup', (e) => {
+      if (!dragMoved) {
+        if (currentTool === 'dist' || currentTool === 'area') {
+          const snapped = findSnapPoint(e.clientX, e.clientY);
+          const pt = snapped || screenToWorld(e.clientX, e.clientY);
+          measurePoints.push(pt);
+          updateMeasureHUD();
+        } else if (currentTool === 'select') {
+          selectedEntity = hitTestEntity(e.clientX, e.clientY);
+          updateMeasureHUD();
+        }
+      }
+      isDragging = false;
+      render();
+    });
+
+    // 滾輪縮放
+    canvas.addEventListener('wheel', (e) => {
+      e.preventDefault();
+      const factor = e.deltaY < 0 ? 1.15 : 0.87;
+      const wx = (e.clientX - camera.x) / camera.zoom;
+      const wy = (e.clientY - camera.y) / camera.zoom;
+      camera.zoom *= factor;
+      camera.x = e.clientX - wx * camera.zoom;
+      camera.y = e.clientY - wy * camera.zoom;
+      render();
+    }, { passive: false });
+
+    // 手機雙指 Pinch 縮放
+    canvas.addEventListener('touchstart', (e) => {
+      if (e.touches.length === 2) {
+        isDragging = false;
+        pinchDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+      }
+    }, { passive: true });
+
+    canvas.addEventListener('touchmove', (e) => {
+      if (e.touches.length === 2) {
+        const newDist = Math.hypot(
+          e.touches[0].clientX - e.touches[1].clientX,
+          e.touches[0].clientY - e.touches[1].clientY
+        );
+        if (pinchDist > 0) {
+          const midX = (e.touches[0].clientX + e.touches[1].clientX) / 2;
+          const midY = (e.touches[0].clientY + e.touches[1].clientY) / 2;
+          const factor = newDist / pinchDist;
+          const wx = (midX - camera.x) / camera.zoom;
+          const wy = (midY - camera.y) / camera.zoom;
+          camera.zoom *= factor;
+          camera.x = midX - wx * camera.zoom;
+          camera.y = midY - wy * camera.zoom;
+          render();
+        }
+        pinchDist = newDist;
+      }
+    }, { passive: true });
+
+    // ASCII DXF 解析器
+    function parseDXF(text, fileName) {
+      const lines = text.split(/\r?\n/);
+      const parsedEntities = [];
+      const parsedLayers = {};
+      let inEntities = false;
+      let curr = null;
+      let polyPts = [];
+
+      for (let i = 0; i < lines.length - 1; i += 2) {
+        const code = lines[i].trim();
+        const val = lines[i + 1].trim();
+
+        if (code === '2' && val === 'ENTITIES') {
+          inEntities = true;
+          continue;
+        }
+        if (code === '0' && val === 'ENDSEC' && inEntities) {
+          if (curr) flushEntity(curr, polyPts, parsedEntities, parsedLayers);
+          break;
+        }
+        if (!inEntities) continue;
+
+        if (code === '0') {
+          if (curr) flushEntity(curr, polyPts, parsedEntities, parsedLayers);
+          curr = { type: val, layer: '0', aci: 4 };
+          polyPts = [];
+        } else if (curr) {
+          if (code === '8') curr.layer = val;
+          else if (code === '62') curr.aci = parseInt(val, 10);
+          else if (code === '10') {
+            if (curr.type === 'LWPOLYLINE') {
+              polyPts.push({ x: parseFloat(val), y: 0 });
+            } else {
+              curr.x1 = parseFloat(val);
+            }
+          } else if (code === '20') {
+            if (curr.type === 'LWPOLYLINE' && polyPts.length > 0) {
+              polyPts[polyPts.length - 1].y = -parseFloat(val);
+            } else {
+              curr.y1 = -parseFloat(val);
+            }
+          } else if (code === '11') curr.x2 = parseFloat(val);
+          else if (code === '21') curr.y2 = -parseFloat(val);
+          else if (code === '40') curr.r = parseFloat(val);
+          else if (code === '50') curr.startAngle = -parseFloat(val) * Math.PI / 180;
+          else if (code === '51') curr.endAngle = -parseFloat(val) * Math.PI / 180;
+          else if (code === '70') curr.flags = parseInt(val, 10);
+          else if (code === '1') curr.text = val;
+        }
+      }
+
+      if (parsedEntities.length > 0) {
+        entities = parsedEntities;
+        layers = parsedLayers;
+        document.getElementById('bannerText').textContent =
+          `已載入 ${fileName} | 共解析 ${entities.length} 筆幾何物件 · ${Object.keys(layers).length} 個圖層`;
+        document.getElementById('statusBanner').classList.remove('hidden');
+        fitToScreen();
+      } else {
+        alert('無法解析此檔案，請確認是否為標準 ASCII 格式的 .DXF 檔案（二進位 DWG 建議先於 CAD 轉存為 DXF）。');
+      }
+    }
+
+    function flushEntity(curr, polyPts, list, layerMap) {
+      const col = getColor(curr.aci);
+      if (!layerMap[curr.layer]) {
+        layerMap[curr.layer] = { color: col, visible: true };
+      }
+
+      if (curr.type === 'LINE' && curr.x1 !== undefined && curr.x2 !== undefined) {
+        list.push({ type: 'LINE', x1: curr.x1, y1: curr.y1, x2: curr.x2, y2: curr.y2, layer: curr.layer, color: col });
+      } else if (curr.type === 'CIRCLE' && curr.x1 !== undefined && curr.r !== undefined) {
+        list.push({ type: 'CIRCLE', cx: curr.x1, cy: curr.y1, r: curr.r, layer: curr.layer, color: col });
+      } else if (curr.type === 'ARC' && curr.x1 !== undefined && curr.r !== undefined) {
+        list.push({
+          type: 'ARC', cx: curr.x1, cy: curr.y1, r: curr.r,
+          startAngle: curr.endAngle || 0, endAngle: curr.startAngle || Math.PI,
+          layer: curr.layer, color: col
+        });
+      } else if (curr.type === 'LWPOLYLINE' && polyPts.length > 1) {
+        for (let i = 0; i < polyPts.length - 1; i++) {
+          list.push({
+            type: 'LINE',
+            x1: polyPts[i].x, y1: polyPts[i].y,
+            x2: polyPts[i+1].x, y2: polyPts[i+1].y,
+            layer: curr.layer, color: col
+          });
+        }
+        if ((curr.flags & 1) === 1 && polyPts.length > 2) {
+          list.push({
+            type: 'LINE',
+            x1: polyPts[polyPts.length - 1].x, y1: polyPts[polyPts.length - 1].y,
+            x2: polyPts[0].x, y2: polyPts[0].y,
+            layer: curr.layer, color: col
+          });
+        }
+      } else if (curr.type === 'TEXT' && curr.text) {
+        list.push({ type: 'TEXT', x: curr.x1 || 0, y: curr.y1 || 0, text: curr.text, height: curr.r || 100, layer: curr.layer, color: col });
+      }
+    }
+
+    // 檔案上傳監聽
+    document.getElementById('fileInput').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+      if (file.name.toLowerCase().endsWith('.dwg')) {
+        document.getElementById('bannerText').textContent =
+          `檔案 ${file.name} 為原生二進位 DWG 格式，瀏覽器端請先轉存為 DXF 即可完整解析。`;
+        document.getElementById('statusBanner').classList.remove('hidden');
+        return;
+      }
+      const reader = new FileReader();
+      reader.onload = (ev) => parseDXF(ev.target.result, file.name);
+      reader.readAsText(file);
+    });
+
+    // 底部工具列切換
+    document.querySelectorAll('.nav-item').forEach(btn => {
+      btn.addEventListener('click', () => {
+        const tool = btn.dataset.tool;
+        if (tool === 'fit') {
+          fitToScreen();
+          return;
+        }
+        if (tool === 'more') {
+          openMoreDrawer();
+          return;
+        }
+        document.querySelectorAll('.nav-item').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentTool = tool;
+        measurePoints = [];
+        selectedEntity = null;
+        snapPoint = null;
+        updateMeasureHUD();
+        render();
+      });
+    });
+
+    // 單位切換與清除測量
+    document.querySelectorAll('[data-unit]').forEach(btn => {
+      btn.addEventListener('click', () => {
+        unit = btn.dataset.unit;
+        updateMeasureHUD();
+      });
+    });
+
+    document.getElementById('btnClearMeasure').addEventListener('click', () => {
+      measurePoints = [];
+      selectedEntity = null;
+      updateMeasureHUD();
+      render();
+    });
+
+    document.getElementById('btnCloseBanner').addEventListener('click', () => {
+      document.getElementById('statusBanner').classList.add('hidden');
+    });
+
+    // 圖層抽屜
+    const modalBackdrop = document.getElementById('modalBackdrop');
+    const drawerContent = document.getElementById('drawerContent');
+
+    document.getElementById('btnLayers').addEventListener('click', () => {
+      let html = `
+        <div class="drawer-title">
+          <span>圖層管理 (${Object.keys(layers).length})</span>
+          <button class="hud-btn" onclick="closeDrawer()">完成</button>
+        </div>
+      `;
+      for (const [name, info] of Object.entries(layers)) {
+        html += `
+          <div class="layer-row">
+            <div class="layer-info">
+              <span class="color-dot" style="background:${info.color}"></span>
+              <span>${name}</span>
+            </div>
+            <label class="switch">
+              <input type="checkbox" ${info.visible ? 'checked' : ''} onchange="toggleLayer('${name}', this.checked)">
+              <span class="slider"></span>
+            </label>
+          </div>
+        `;
+      }
+      drawerContent.innerHTML = html;
+      modalBackdrop.classList.add('open');
+    });
+
+    window.toggleLayer = function(name, val) {
+      if (layers[name]) {
+        layers[name].visible = val;
+        render();
+      }
+    };
+
+    window.closeDrawer = function() {
+      modalBackdrop.classList.remove('open');
+    };
+
+    modalBackdrop.addEventListener('click', (e) => {
+      if (e.target === modalBackdrop) closeDrawer();
+    });
+
+    // 更多設定 & 安裝到手機桌面說明抽屜
+    function openMoreDrawer() {
+      drawerContent.innerHTML = `
+        <div class="drawer-title">
+          <span>工具設定與手機安裝</span>
+          <button class="hud-btn" onclick="closeDrawer()">關閉</button>
+        </div>
+
+        <div class="install-guide">
+          <strong>📲 如何安裝成手機桌面獨立 APP：</strong><br>
+          • <strong>iPhone (Safari)：</strong>點擊底部「分享」圖示 ⬆️ → 選擇「<strong>加入主畫面</strong>」即可建立獨立圖示與全螢幕啟動。<br>
+          • <strong>Android (Chrome)：</strong>點擊右上角「⋮」選單 → 選擇「<strong>安裝應用程式</strong>」或「加到主畫面」。
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-info"><span>顯示背景參考網格</span></div>
+          <label class="switch">
+            <input type="checkbox" ${showGrid ? 'checked' : ''} onchange="showGrid=this.checked; render();">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <div class="layer-row">
+          <div class="layer-info"><span>物件端點自動鎖點 (OSNAP)</span></div>
+          <label class="switch">
+            <input type="checkbox" ${snapEnabled ? 'checked' : ''} onchange="snapEnabled=this.checked;">
+            <span class="slider"></span>
+          </label>
+        </div>
+
+        <button class="btn-dark" style="width:100%; justify-content:center;" onclick="loadSampleDrawing(); closeDrawer();">
+          重新載入預設建築範例圖
+        </button>
+      `;
+      modalBackdrop.classList.add('open');
+    }
+
+    document.getElementById('btnTopMore').addEventListener('click', openMoreDrawer);
+
+    // 啟動初始化
+    resizeCanvas();
+    loadSampleDrawing();
+  </script>
+</body>
+</html>
